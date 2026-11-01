@@ -2,9 +2,17 @@ import streamlit as st
 import pandas as pd
 import requests
 import plotly.graph_objects as go
+import datetime
 
 st.set_page_config(page_title="WHALE + TRAP FINAL", layout="wide")
 st.title("🐋 WHALE + TRAP DETECTOR - FINAL")
+
+# --- SUNDAY CHECK - Tera wala issue fix ---
+today = datetime.datetime.now().weekday() # 6 = Sunday
+if today == 6:
+    st.warning("⚠️ Aaj Sunday hai, Upstox / Exchange band hai")
+    st.info("Isliye 'Data nahi aaya' dikh raha hai. App sahi hai, Kal Monday se live data auto ayega.")
+    st.stop()
 
 # --- SIDEBAR ---
 st.sidebar.header("Setting")
@@ -32,7 +40,7 @@ if not UPSTOX_TOKEN:
 
 df = get_live_data(UPSTOX_TOKEN, INSTRUMENT)
 if df is None:
-    st.error("Data nahi aaya, token expire hai kya?")
+    st.error("Data nahi aaya, token expire hai kya? Ya aaj market band hai.")
     st.stop()
 
 # --- CALCULATIONS ---
