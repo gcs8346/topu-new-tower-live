@@ -1,9 +1,4 @@
 streamlit
-upstox-python-sdk==2.30.0
 pandas
-numpy
+plotly
 requests
-python-dotenv
-websocket-client
-protobuf
-pytz
