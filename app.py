@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 st.set_page_config(layout="wide", page_title="WHALE DETECTOR")
-st.title("🐋 WHALE + TRAP - RATE LIMIT FIXED")
+st.title("🐋 WHALE + TRAP - FULL CODE")
 
 UPSTOX_TOKEN = st.sidebar.text_input("Upstox Token", type="password").strip()
 INSTRUMENT = st.sidebar.selectbox("Index", ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX", "BSE_INDEX|BANKEX"])
@@ -60,34 +60,24 @@ def get_live_data(token, instrument, tf_label):
 
 def detect_whale_trap(df):
     df['body'] = abs(df['close'] - df['open'])
-    df['range'] = df['high'] - df['low']
     df['wick_up'] = df['high'] - df[['open','close']].max(axis=1)
     df['wick_down'] = df[['open','close']].min(axis=1) - df['low']
-    df['avg_range'] = df['range'].rolling(20).mean()
     
     last = df.iloc[-1]
     
-    # Volume 0 fix for INDEX
-    if last['volume'] == 0:
-        avg_r = last['avg_range'] if pd.notna(last['avg_range']) else last['range']
-        if last['wick_up'] > last['body'] * 2.5 and last['range'] > avg_r * 1.5:
-            signal = f"🔴 WHALE SELL TRAP @ {last['high']:.1f}"
-        elif last['wick_down'] > last['body'] * 2.5 and last['range'] > avg_r * 1.5:
-            signal = f"🟢 WHALE BUY TRAP @ {last['low']:.1f}"
-        elif last['range'] > avg_r * 2:
-            if last['close'] > last['open']:
-                signal = f"🟢 TEZ BUY - 1.5 point scalp ready"
-            else:
-                signal = f"🔴 TEZ SELL - 1.5 point scalp ready"
+    # SIRF PERFECT ENTRY - NO TARGET
+    if last['wick_up'] > last['body'] * 2:
+        signal = f"🔴 PERFECT SELL TRAP @ {last['high']:.1f}"
+    elif last['wick_down'] > last['body'] * 2:
+        signal = f"🟢 PERFECT BUY TRAP @ {last['low']:.1f}"
+    elif last['body'] > 0 and last['body'] > (last['wick_up'] + last['wick_down']):
+        if last['close'] > last['open']:
+            signal = f"🟢 STRONG BUY SIGNAL"
         else:
-            signal = f"⚪ NO TRADE - RANGE"
+            signal = f"🔴 STRONG SELL SIGNAL"
     else:
-        df['avg_vol'] = df['volume'].rolling(20).mean()
-        if last['volume'] > last['avg_vol'] * 2.5:
-            signal = f"🟢 WHALE VOLUME TEZ @ {last['close']:.1f}"
-        else:
-            signal = f"⚪ NO TRADE - RANGE"
-            
+        signal = f"⚪ WAIT - Abhi entry mat le"
+
     return signal, last
 
 if not UPSTOX_TOKEN:
@@ -113,7 +103,7 @@ else:
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("LTP", f"{last['close']:.1f}")
 c2.metric("Volume", f"{int(last['volume'])}")
-c3.metric("Range", f"{last['range']:.1f}")
+c3.metric("Range", f"{(last['high']-last['low']):.1f}")
 c4.metric("Candles", f"{len(df)}")
 
 st.success(f"✅ LIVE! {len(df)} candles | TimeFrame: {TIMEFRAME}")
