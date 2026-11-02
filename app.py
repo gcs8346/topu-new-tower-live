@@ -2,118 +2,80 @@ import streamlit as st
 import pandas as pd
 import requests
 import plotly.graph_objects as go
-import time
 from datetime import datetime
 
-st.set_page_config(layout="wide", page_title="WHALE DETECTOR")
-st.title("🐋 WHALE + TRAP - FULL CODE")
+st.set_page_config(layout="wide", page_title="WHALE FINAL")
+st.title("🐋 WHALE + TRAP - FULL CODE (FIXED)")
 
 UPSTOX_TOKEN = st.sidebar.text_input("Upstox Token", type="password").strip()
 INSTRUMENT = st.sidebar.selectbox("Index", ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX", "BSE_INDEX|BANKEX"])
-TIMEFRAME = st.sidebar.selectbox("TimeFrame", ["1m", "5m", "15m", "30m"], index=0)
-AUTO_REFRESH = st.sidebar.checkbox("Auto Refresh (60 sec)", value=False)
 
-@st.cache_data(ttl=60) 
-def get_live_data(token, instrument, tf_label):
-    headers = {'Authorization': f'Bearer {token}', 'Accept': 'application/json'}
-    api_tf = "1minute"
-    for attempt in range(3):
-        try:
-            url = f"https://api.upstox.com/v2/historical-candle/intraday/{instrument}/{api_tf}"
-            r = requests.get(url, headers=headers, timeout=15)
-            
-            if r.status_code in [429, 1015]:
-                st.warning(f"Rate limit! {30*(attempt+1)} sec wait...")
-                time.sleep(30 * (attempt+1))
-                continue
-
-            data = r.json()
-            if r.status_code != 200:
-                st.error(f"Upstox Error: {data}")
-                return None
-            if not data.get('data') or not data['data'].get('candles'):
-                if datetime.now().weekday() >= 5:
-                    st.info("Sunday hai, token sahi hai!")
-                else:
-                    st.warning("Market 9:15 pe khulega")
-                return None
-
-            df = pd.DataFrame(data['data']['candles'], columns=['time','open','high','low','close','volume','oi'])
-            df['time'] = pd.to_datetime(df['time'])
-            df = df.sort_values('time')
-            df.set_index('time', inplace=True)
-
-            if tf_label == "5m":
-                df = df.resample('5min').agg({'open':'first','high':'max','low':'min','close':'last','volume':'sum','oi':'last'}).dropna()
-            elif tf_label == "15m":
-                df = df.resample('15min').agg({'open':'first','high':'max','low':'min','close':'last','volume':'sum','oi':'last'}).dropna()
-            elif tf_label == "30m":
-                df = df.resample('30min').agg({'open':'first','high':'max','low':'min','close':'last','volume':'sum','oi':'last'}).dropna()
-            
-            df = df.reset_index()
-            return df
-        except Exception as e:
-            st.error(f"Error: {e}")
-            time.sleep(5)
-            continue
+def get_fast_ltp(token, instrument):
+    try:
+        headers = {'Authorization': f'Bearer {token}'}
+        url = f"https://api.upstox.com/v2/market-quote/ltp?instrument_key={instrument}"
+        r = requests.get(url, headers=headers, timeout=5)
+        data = r.json()
+        if r.status_code == 200:
+            return list(data['data'].values())[0]['last_price']
+    except: return None
     return None
 
+def get_candles(token, instrument):
+    try:
+        headers = {'Authorization': f'Bearer {token}'}
+        url = f"https://api.upstox.com/v2/historical-candle/intraday/{instrument}/1minute"
+        r = requests.get(url, headers=headers, timeout=10)
+        data = r.json()
+        df = pd.DataFrame(data['data']['candles'], columns=['time','open','high','low','close','volume','oi'])
+        df['time'] = pd.to_datetime(df['time'])
+        df = df.sort_values('time')
+        return df
+    except: return None
+
 def detect_whale_trap(df):
-    df['body'] = abs(df['close'] - df['open'])
-    df['wick_up'] = df['high'] - df[['open','close']].max(axis=1)
-    df['wick_down'] = df[['open','close']].min(axis=1) - df['low']
-    
     last = df.iloc[-1]
-    
-    # SIRF PERFECT ENTRY - NO TARGET
-    if last['wick_up'] > last['body'] * 2:
-        signal = f"🔴 PERFECT SELL TRAP @ {last['high']:.1f}"
-    elif last['wick_down'] > last['body'] * 2:
-        signal = f"🟢 PERFECT BUY TRAP @ {last['low']:.1f}"
-    elif last['body'] > 0 and last['body'] > (last['wick_up'] + last['wick_down']):
-        if last['close'] > last['open']:
-            signal = f"🟢 STRONG BUY SIGNAL"
-        else:
-            signal = f"🔴 STRONG SELL SIGNAL"
+    body = abs(last['close'] - last['open'])
+    wick_up = last['high'] - max(last['open'], last['close'])
+    wick_down = min(last['open'], last['close']) - last['low']
+    new_signal = None; entry=0; target=0
+    if wick_up > body * 1.8 and body > 0:
+        entry = last['high']; target = entry - 1.5
+        new_signal = f"🔴 PERFECT SELL TRAP @ {entry:.1f}"
+    elif wick_down > body * 1.8 and body > 0:
+        entry = last['low']; target = entry + 1.5
+        new_signal = f"🟢 PERFECT BUY TRAP @ {entry:.1f}"
+    if 'last_trap' not in st.session_state:
+        st.session_state.last_trap="⚪ WAIT"; st.session_state.trap_count=0; st.session_state.target=0
+    if new_signal:
+        st.session_state.last_trap=new_signal; st.session_state.target=target; st.session_state.trap_count=0
     else:
-        signal = f"⚪ WAIT - Abhi entry mat le"
+        st.session_state.trap_count+=1
+        if st.session_state.trap_count>5:
+            st.session_state.last_trap="⚪ WAIT - Beech me hai"
+    final=st.session_state.last_trap
+    if "TRAP" in final: final+=f" | TARGET: {st.session_state.target:.1f} (1.5 pt kaat le)"
+    elif st.session_state.trap_count>0 and "WAIT" not in final:
+        final+=f" (Hold {st.session_state.trap_count} candle) | TARGET: {st.session_state.target:.1f}"
+    return final, last
 
-    return signal, last
+if not UPSTOX_TOKEN: st.warning("Token daal"); st.stop()
+fast_ltp=get_fast_ltp(UPSTOX_TOKEN, INSTRUMENT)
+df=get_candles(UPSTOX_TOKEN, INSTRUMENT)
+if df is None: st.error("Data nahi aaya"); st.stop()
+signal, last_candle = detect_whale_trap(df)
+if "SELL" in signal: st.error(f"## {signal}")
+elif "BUY" in signal: st.success(f"## {signal}")
+else: st.info(f"## {signal}")
 
-if not UPSTOX_TOKEN:
-    st.warning("Token daal bhai")
-    st.stop()
+c1,c2,c3,c4=st.columns(4)
+display_ltp=fast_ltp if fast_ltp else last_candle['close']
+c1.metric("LTP", f"{display_ltp:.1f}"); c2.metric("Volume", f"{last_candle['volume']}"); c3.metric("Range", f"{(last_candle['high']-last_candle['low']):.1f}"); c4.metric("Candles", f"{len(df)}")
+st.success(f"✅ LIVE! {len(df)} candles | {INSTRUMENT}")
 
-if st.sidebar.button("REFRESH DATA (1 min me 1 baar)"):
-    st.cache_data.clear()
-
-df = get_live_data(UPSTOX_TOKEN, INSTRUMENT, TIMEFRAME)
-if df is None or df.empty:
-    st.stop()
-
-signal, last = detect_whale_trap(df)
-
-if "SELL" in signal:
-    st.error(f"## {signal}")
-elif "BUY" in signal:
-    st.success(f"## {signal}")
-else:
-    st.info(f"## {signal}")
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("LTP", f"{last['close']:.1f}")
-c2.metric("Volume", f"{int(last['volume'])}")
-c3.metric("Range", f"{(last['high']-last['low']):.1f}")
-c4.metric("Candles", f"{len(df)}")
-
-st.success(f"✅ LIVE! {len(df)} candles | TimeFrame: {TIMEFRAME}")
-
-fig = go.Figure(data=[go.Candlestick(x=df['time'], open=df['open'], high=df['high'], low=df['low'], close=df['close'])])
-fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=550)
+fig=go.Figure(data=[go.Candlestick(x=df['time'], open=df['open'], high=df['high'], low=df['low'], close=df['close'])])
+fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=500)
 st.plotly_chart(fig, use_container_width=True)
-st.dataframe(df.tail(20).sort_values('time', ascending=False))
 
-if AUTO_REFRESH:
-    time.sleep(60)
-    st.cache_data.clear()
-    st.rerun()
+# --- SAHI LAST LINE - NO ERROR ---
+st.caption(f"Last Update: {datetime.now().strftime('%H:%M:%S')} | 60 sec me khud refresh kar lena")
