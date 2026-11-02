@@ -74,4 +74,56 @@ def detect_whale_trap(df):
             signal = f"🔴 WHALE SELL TRAP @ {last['high']:.1f}"
         elif last['wick_down'] > last['body'] * 2.5 and last['range'] > avg_r * 1.5:
             signal = f"🟢 WHALE BUY TRAP @ {last['low']:.1f}"
-       
+        elif last['range'] > avg_r * 2:
+            if last['close'] > last['open']:
+                signal = f"🟢 TEZ BUY - 1.5 point scalp ready"
+            else:
+                signal = f"🔴 TEZ SELL - 1.5 point scalp ready"
+        else:
+            signal = f"⚪ NO TRADE - RANGE"
+    else:
+        df['avg_vol'] = df['volume'].rolling(20).mean()
+        if last['volume'] > last['avg_vol'] * 2.5:
+            signal = f"🟢 WHALE VOLUME TEZ @ {last['close']:.1f}"
+        else:
+            signal = f"⚪ NO TRADE - RANGE"
+            
+    return signal, last
+
+if not UPSTOX_TOKEN:
+    st.warning("Token daal bhai")
+    st.stop()
+
+if st.sidebar.button("REFRESH DATA (1 min me 1 baar)"):
+    st.cache_data.clear()
+
+df = get_live_data(UPSTOX_TOKEN, INSTRUMENT, TIMEFRAME)
+if df is None or df.empty:
+    st.stop()
+
+signal, last = detect_whale_trap(df)
+
+if "SELL" in signal:
+    st.error(f"## {signal}")
+elif "BUY" in signal:
+    st.success(f"## {signal}")
+else:
+    st.info(f"## {signal}")
+
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("LTP", f"{last['close']:.1f}")
+c2.metric("Volume", f"{int(last['volume'])}")
+c3.metric("Range", f"{last['range']:.1f}")
+c4.metric("Candles", f"{len(df)}")
+
+st.success(f"✅ LIVE! {len(df)} candles | TimeFrame: {TIMEFRAME}")
+
+fig = go.Figure(data=[go.Candlestick(x=df['time'], open=df['open'], high=df['high'], low=df['low'], close=df['close'])])
+fig.update_layout(template="plotly_dark", xaxis_rangeslider_visible=False, height=550)
+st.plotly_chart(fig, use_container_width=True)
+st.dataframe(df.tail(20).sort_values('time', ascending=False))
+
+if AUTO_REFRESH:
+    time.sleep(60)
+    st.cache_data.clear()
+    st.rerun()
