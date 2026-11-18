@@ -12,7 +12,20 @@ st.title("🐋 WHALE + TRAP - FULL CODE (FIXED)")
 st_autorefresh(interval=60 * 1000, key="whale_final_auto")
 
 UPSTOX_TOKEN = st.sidebar.text_input("Upstox Token", type="password").strip()
-INSTRUMENT = st.sidebar.selectbox("Index", ["NSE_INDEX|Nifty 50", "NSE_INDEX|Nifty Bank", "BSE_INDEX|SENSEX", "BSE_INDEX|BANKEX","CRUDEOIL": "MCX_FO|573422",])
+# Pehle Dict bana le
+INSTRUMENT_MAP = {
+    "Nifty 50": "NSE_INDEX|Nifty 50",
+    "Nifty Bank": "NSE_INDEX|Nifty Bank",
+    "SENSEX": "BSE_INDEX|SENSEX",
+    "BANKEX": "BSE_INDEX|BANKEX",
+    "CRUDEOIL": "MCX_FO|573422",
+}
+
+# Fir Selectbox me sirf Naam dikha
+SELECTED_NAME = st.sidebar.selectbox("Index", list(INSTRUMENT_MAP.keys()))
+
+# Aur us Naam se Code nikal le
+INSTRUMENT = INSTRUMENT_MAP[SELECTED_NAME]
 
 def get_fast_ltp(token, instrument):
     try:
